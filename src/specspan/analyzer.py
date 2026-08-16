@@ -6,10 +6,12 @@ import json
 import os
 import re
 import stat
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from . import SCHEMA_VERSION, __version__
+from .safeio import _close_owned_fd
 
 
 HEADING = re.compile(r"^#{1,6}\s+(REQ-[A-Z0-9][A-Z0-9-]*)\s*:\s*(.+?)\s*$")
@@ -19,6 +21,8 @@ FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
 SOURCE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".cs", ".rb", ".php", ".sh"}
 IGNORED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "node_modules", "dist", "build", "artifacts", "__pycache__"}
 LEVEL_RANK = {"note": 1, "warning": 2, "error": 3}
+MAX_CHANGED_FILE_BYTES = 8 * 1024 * 1024
+UTF8_BOM = b"\xef\xbb\xbf"
 
 
 def _normal(value: str) -> str:
@@ -35,6 +39,67 @@ def _regular_lstat(path: Path) -> Optional[os.stat_result]:
     except OSError:
         return None
     return metadata if stat.S_ISREG(metadata.st_mode) else None
+
+
+def _stable_metadata(metadata: os.stat_result) -> Tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _read_stable_regular_bytes(path: Path, limit: int) -> bytes:
+    """Read one unchanged regular file without following its final component."""
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("stable file input requires no-follow file opens")
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError("input must be a regular file: %s" % path)
+    if before.st_size > limit:
+        raise ValueError("input exceeds the %d-byte limit: %s" % (limit, path))
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | os.O_NOFOLLOW
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(str(path), flags)
+        opened_before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened_before.st_mode)
+            or _stable_metadata(opened_before) != _stable_metadata(before)
+        ):
+            raise ValueError("input changed while it was opened: %s" % path)
+        chunks = []
+        size = 0
+        while True:
+            chunk = os.read(descriptor, min(65536, limit + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > limit:
+                raise ValueError("input exceeds the %d-byte limit: %s" % (limit, path))
+        opened_after = os.fstat(descriptor)
+        after = path.lstat()
+        if (
+            _stable_metadata(opened_after) != _stable_metadata(opened_before)
+            or _stable_metadata(after) != _stable_metadata(opened_before)
+        ):
+            raise ValueError("input changed while it was read: %s" % path)
+        return b"".join(chunks)
+    finally:
+        if descriptor >= 0:
+            owned_descriptor = descriptor
+            descriptor = -1
+            _close_owned_fd(owned_descriptor)
 
 
 def _read_regular_text(root: Path, path: Path) -> Optional[str]:
@@ -54,23 +119,11 @@ def _read_regular_text(root: Path, path: Path) -> Optional[str]:
         return None
     if resolved != path.absolute():
         return None
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(str(path), flags)
-    except OSError:
+        payload = _read_stable_regular_bytes(path, max(before.st_size + 1, 1))
+    except (OSError, ValueError):
         return None
-    opened = os.fstat(descriptor)
-    if (
-        not stat.S_ISREG(opened.st_mode)
-        or opened.st_dev != before.st_dev
-        or opened.st_ino != before.st_ino
-    ):
-        os.close(descriptor)
-        return None
-    with os.fdopen(descriptor, "r", encoding="utf-8", errors="replace") as handle:
-        return handle.read()
+    return payload.decode("utf-8", errors="replace")
 
 
 def _iter_paths(root: Path, suffixes: Set[str], within: Optional[Path] = None) -> Iterable[Path]:
@@ -199,40 +252,54 @@ def parse_evidence(root: Path, spec_dir: Path) -> List[Dict[str, Any]]:
 
 
 def _strong_components(nodes: Sequence[str], edges: Mapping[str, Sequence[str]]) -> List[List[str]]:
-    """Tarjan SCC in stable traversal order."""
-    index = 0
-    indices: Dict[str, int] = {}
-    low: Dict[str, int] = {}
-    stack: List[str] = []
-    on_stack: Set[str] = set()
+    """Iterative Kosaraju SCC in stable traversal order."""
+    node_set = set(nodes)
+    adjacency = {
+        node: sorted(set(edges.get(node, [])) & node_set) for node in node_set
+    }
+    visited: Set[str] = set()
+    finished: List[str] = []
+    for start in sorted(node_set):
+        if start in visited:
+            continue
+        visited.add(start)
+        stack: List[Tuple[str, int]] = [(start, 0)]
+        while stack:
+            node, index = stack[-1]
+            targets = adjacency[node]
+            if index >= len(targets):
+                stack.pop()
+                finished.append(node)
+                continue
+            target = targets[index]
+            stack[-1] = (node, index + 1)
+            if target not in visited:
+                visited.add(target)
+                stack.append((target, 0))
+
+    reverse: Dict[str, List[str]] = {node: [] for node in node_set}
+    for source, targets in adjacency.items():
+        for target in targets:
+            reverse[target].append(source)
+    for targets in reverse.values():
+        targets.sort()
+
+    assigned: Set[str] = set()
     result: List[List[str]] = []
-
-    def visit(node: str) -> None:
-        nonlocal index
-        indices[node] = index
-        low[node] = index
-        index += 1
-        stack.append(node)
-        on_stack.add(node)
-        for target in sorted(edges.get(node, [])):
-            if target not in indices:
-                visit(target)
-                low[node] = min(low[node], low[target])
-            elif target in on_stack:
-                low[node] = min(low[node], indices[target])
-        if low[node] == indices[node]:
-            component = []
-            while True:
-                target = stack.pop()
-                on_stack.remove(target)
-                component.append(target)
-                if target == node:
-                    break
-            result.append(sorted(component))
-
-    for node in sorted(nodes):
-        if node not in indices:
-            visit(node)
+    for start in reversed(finished):
+        if start in assigned:
+            continue
+        assigned.add(start)
+        component: List[str] = []
+        pending = [start]
+        while pending:
+            node = pending.pop()
+            component.append(node)
+            for target in reversed(reverse[node]):
+                if target not in assigned:
+                    assigned.add(target)
+                    pending.append(target)
+        result.append(sorted(component))
     return sorted(result)
 
 
@@ -243,21 +310,27 @@ def _directed_cycle(component: Sequence[str], edges: Mapping[str, Sequence[str]]
     if start in edges.get(start, []):
         return [start, start]
 
-    def search(node: str, path: List[str], visited: Set[str]) -> Optional[List[str]]:
-        for target in sorted(set(edges.get(node, [])) & allowed):
-            if target == start:
-                return path + [start]
-            if target in visited:
-                continue
-            result = search(target, path + [target], visited | {target})
-            if result is not None:
-                return result
-        return None
-
-    result = search(start, [start], {start})
-    if result is None:
-        raise ValueError("strongly connected component did not contain a directed cycle")
-    return result
+    visited = {start}
+    path = [start]
+    stack: List[Tuple[str, int, List[str]]] = [
+        (start, 0, sorted(set(edges.get(start, [])) & allowed))
+    ]
+    while stack:
+        node, index, targets = stack[-1]
+        if index >= len(targets):
+            stack.pop()
+            path.pop()
+            continue
+        target = targets[index]
+        stack[-1] = (node, index + 1, targets)
+        if target == start:
+            return path + [start]
+        if target in visited:
+            continue
+        visited.add(target)
+        path.append(target)
+        stack.append((target, 0, sorted(set(edges.get(target, [])) & allowed)))
+    raise ValueError("strongly connected component did not contain a directed cycle")
 
 
 def _finding(
@@ -476,6 +549,8 @@ def analyze(root_value: str, spec_dir_value: str = "specs") -> Dict[str, Any]:
 def _normalize_changed(value: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("changed paths must be non-empty strings")
+    if any(unicodedata.category(character) in {"Cc", "Cf"} for character in value):
+        raise ValueError("changed paths must not contain control characters: %r" % value)
     normalized = value.strip().replace("\\", "/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
@@ -492,15 +567,40 @@ def _normalize_changed(value: str) -> str:
     return normalized
 
 
+def _decode_changed_file_list(payload: bytes, path: Path) -> str:
+    if payload.startswith(UTF8_BOM):
+        payload = payload[len(UTF8_BOM) :]
+    if UTF8_BOM in payload:
+        raise ValueError(
+            "changed-file list may contain one UTF-8 BOM only at byte zero: %s" % path
+        )
+    try:
+        text = payload.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("changed-file list is not valid UTF-8 %s: %s" % (path, exc)) from exc
+    disallowed = [
+        character
+        for character in text
+        if unicodedata.category(character) in {"Cc", "Cf"}
+        and character not in {"\t", "\n", "\r"}
+    ]
+    if disallowed:
+        raise ValueError("changed-file list contains disallowed control characters: %s" % path)
+    return text
+
+
 def load_changed_files(path_value: str) -> List[str]:
     path = Path(path_value)
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+        payload = _read_stable_regular_bytes(path, MAX_CHANGED_FILE_BYTES)
+        text = _decode_changed_file_list(payload, path)
+    except (OSError, ValueError) as exc:
         raise ValueError("cannot read changed-file list %s: %s" % (path, exc)) from exc
     try:
         parsed = json.loads(text)
-    except ValueError:
+    except json.JSONDecodeError as exc:
+        if text.lstrip().startswith(("[", "{")):
+            raise ValueError("cannot parse changed-file JSON %s: %s" % (path, exc)) from exc
         values = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
     else:
         if not isinstance(parsed, list):
