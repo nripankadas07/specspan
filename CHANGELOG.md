@@ -20,6 +20,8 @@
   across every descriptor/stream error path.
 - Ship tests, fixtures, examples, demo goldens, and documentation in the sdist;
   extract it, run its full suite, and build the release wheel from it in CI.
+- Parse requirement headings and fields with linear-time regular expressions,
+  including bounded behavior for very long malformed Markdown lines.
 
 ## 0.1.0 - 2026-08-16
 

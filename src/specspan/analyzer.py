@@ -14,8 +14,11 @@ from . import SCHEMA_VERSION, __version__
 from .safeio import _close_owned_fd
 
 
-HEADING = re.compile(r"^#{1,6}\s+(REQ-[A-Z0-9][A-Z0-9-]*)\s*:\s*(.+?)\s*$")
-FIELD = re.compile(r"^(Status|Priority|Depends-On|Must|Must-Not|Acceptance)\s*:\s*(.*?)\s*$", re.I)
+# Keep the final capture greedy and strip it after matching.  A lazy wildcard
+# followed by optional whitespace can require polynomial backtracking on long
+# malformed lines; these forms remain linear while preserving the format.
+HEADING = re.compile(r"^#{1,6}[ \t]+(REQ-[A-Z0-9][A-Z0-9-]*)[ \t]*:(.*)$")
+FIELD = re.compile(r"^(Status|Priority|Depends-On|Must|Must-Not|Acceptance)[ \t]*:(.*)$", re.I)
 ANNOTATION = re.compile(r"@spec\s+(REQ-[A-Z0-9][A-Z0-9-]*)\b")
 FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
 SOURCE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".cs", ".rb", ".php", ".sh"}
@@ -172,7 +175,7 @@ def parse_requirements(root: Path, spec_dir: Path) -> List[Dict[str, Any]]:
             if heading:
                 current = {
                     "id": heading.group(1),
-                    "title": heading.group(2),
+                    "title": heading.group(2).strip(),
                     "path": relative,
                     "line": number,
                     "status": "active",
