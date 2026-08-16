@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "specspan"
-version = "0.1.0"
+version = "0.1.1"
 description = "Deterministic Markdown requirement-to-code-to-test traceability and impact analysis."
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "Nripanka Das"}]
 keywords = ["requirements", "traceability", "specifications", "sarif", "agents"]
 dependencies = []

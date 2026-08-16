@@ -9,6 +9,9 @@ import io
 import json
 from pathlib import Path
 from typing import Any, Mapping, Optional
+from urllib.parse import quote
+
+from .safeio import write_text_files
 
 
 def stable_json(value: Any) -> str:
@@ -69,7 +72,7 @@ def sarif(artifact: Mapping[str, Any]) -> Dict[str, Any]:
                 "locations": [
                     {
                         "physicalLocation": {
-                            "artifactLocation": {"uri": item["path"]},
+                            "artifactLocation": {"uri": quote(item["path"], safe="/")},
                             "region": {"startLine": item["line"]},
                         }
                     }
@@ -196,8 +199,6 @@ body{font:15px system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 
 def write_bundle(
     artifact: Mapping[str, Any], output_value: str, impact_value: Optional[Mapping[str, Any]] = None
 ) -> Path:
-    output = Path(output_value)
-    output.mkdir(parents=True, exist_ok=True)
     files = {
         "specspan.json": stable_json(artifact),
         "traceability.csv": _csv_report(artifact),
@@ -209,7 +210,6 @@ def write_bundle(
         files["impact.json"] = stable_json(impact_value)
     checksums = []
     for name, content in sorted(files.items()):
-        (output / name).write_text(content, encoding="utf-8")
         checksums.append("%s  %s" % (hashlib.sha256(content.encode("utf-8")).hexdigest(), name))
-    (output / "checksums.sha256").write_text("\n".join(checksums) + "\n", encoding="utf-8")
-    return output
+    files["checksums.sha256"] = "\n".join(checksums) + "\n"
+    return write_text_files(output_value, files)

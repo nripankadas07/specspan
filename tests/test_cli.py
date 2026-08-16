@@ -61,6 +61,25 @@ class CliTests(unittest.TestCase):
             self.assertIn("non-empty relative strings", errors.getvalue())
             self.assertNotIn("Traceback", errors.getvalue())
 
+    def test_impact_rejects_malformed_json_with_exit_two(self):
+        with tempfile.TemporaryDirectory() as temp:
+            changed = Path(temp) / "changed.json"
+            changed.write_text('["src/a.py",]', encoding="utf-8")
+            errors = io.StringIO()
+            with contextlib.redirect_stderr(errors):
+                code = main(
+                    [
+                        "impact",
+                        str(FIXTURE),
+                        "--changed-files",
+                        str(changed),
+                        "--out",
+                        str(Path(temp) / "report"),
+                    ]
+                )
+            self.assertEqual(code, 2)
+            self.assertIn("cannot parse changed-file JSON", errors.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
