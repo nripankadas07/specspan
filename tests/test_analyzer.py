@@ -45,6 +45,26 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertFalse(any(str(FIXTURE) in item["path"] for item in first["requirements"]))
 
+    def test_requirement_line_parsing_is_bounded_and_strips_values(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            specs = root / "specs"
+            specs.mkdir()
+            (specs / "requirements.md").write_text(
+                "# REQ-LINEAR-001   :   Bounded parser title   \n"
+                "Status   :   active   \n"
+                "Must   :   preserve trimmed values   \n"
+                + ("#" * 200_000)
+                + "\n",
+                encoding="utf-8",
+            )
+            artifact = analyze(str(root), "specs")
+            self.assertEqual(artifact["requirements"][0]["title"], "Bounded parser title")
+            self.assertEqual(artifact["requirements"][0]["status"], "active")
+            self.assertEqual(
+                artifact["requirements"][0]["must"], ["preserve trimmed values"]
+            )
+
     def test_impact_maps_dependencies_without_git(self):
         artifact = analyze(str(DEMO), "specs")
         result = impact(artifact, ["./src/authorization.py"])
