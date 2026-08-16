@@ -1,0 +1,34 @@
+{
+  "changed_files": [
+    "src/authorization.py"
+  ],
+  "impacted": [
+    {
+      "direct": false,
+      "reasons": [
+        "depends-on:REQ-TRANSFER-001"
+      ],
+      "requirement_id": "REQ-AUDIT-001"
+    },
+    {
+      "direct": true,
+      "reasons": [
+        "code:src/authorization.py"
+      ],
+      "requirement_id": "REQ-CORE-001"
+    },
+    {
+      "direct": false,
+      "reasons": [
+        "depends-on:REQ-CORE-001"
+      ],
+      "requirement_id": "REQ-TRANSFER-001"
+    }
+  ],
+  "schema_version": "specspan-impact/v1",
+  "summary": {
+    "changed_files": 1,
+    "direct_requirements": 1,
+    "total_requirements": 3
+  }
+}

@@ -1,0 +1,4 @@
+requirement_id,status,spec_path,code_paths,test_paths,verified
+REQ-AUDIT-001,active,specs/product.md,src/transfer.py,,false
+REQ-CORE-001,active,specs/product.md,src/authorization.py,tests/test_transfer.py,true
+REQ-TRANSFER-001,active,specs/product.md,src/transfer.py,tests/test_transfer.py,true

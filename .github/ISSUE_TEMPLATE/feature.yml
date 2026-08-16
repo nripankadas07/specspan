@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a deterministic traceability improvement
+title: "[feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Traceability problem
+    validations:
+      required: true
+  - type: textarea
+    id: syntax
+    attributes:
+      label: Proposed explicit syntax or algorithm
+    validations:
+      required: true

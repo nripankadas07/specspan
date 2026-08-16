@@ -1,0 +1,173 @@
+{
+  "evidence": [
+    {
+      "evidence": "\"\"\"@spec REQ-AUDIT-001\"\"\"",
+      "kind": "code",
+      "line": 6,
+      "path": "src/transfer.py",
+      "requirement_id": "REQ-AUDIT-001"
+    },
+    {
+      "evidence": "\"\"\"@spec REQ-CORE-001\"\"\"",
+      "kind": "code",
+      "line": 2,
+      "path": "src/authorization.py",
+      "requirement_id": "REQ-CORE-001"
+    },
+    {
+      "evidence": "\"\"\"@spec REQ-CORE-001\"\"\"",
+      "kind": "test",
+      "line": 2,
+      "path": "tests/test_transfer.py",
+      "requirement_id": "REQ-CORE-001"
+    },
+    {
+      "evidence": "\"\"\"@spec REQ-TRANSFER-001\"\"\"",
+      "kind": "code",
+      "line": 2,
+      "path": "src/transfer.py",
+      "requirement_id": "REQ-TRANSFER-001"
+    },
+    {
+      "evidence": "\"\"\"@spec REQ-TRANSFER-001\"\"\"",
+      "kind": "test",
+      "line": 6,
+      "path": "tests/test_transfer.py",
+      "requirement_id": "REQ-TRANSFER-001"
+    }
+  ],
+  "findings": [
+    {
+      "level": "warning",
+      "line": 14,
+      "message": "REQ-AUDIT-001 has no test evidence.",
+      "path": "specs/product.md",
+      "requirement_id": "REQ-AUDIT-001",
+      "rule": "unverified-requirement"
+    }
+  ],
+  "graph": {
+    "dependencies": [
+      {
+        "from": "REQ-AUDIT-001",
+        "to": "REQ-TRANSFER-001"
+      },
+      {
+        "from": "REQ-TRANSFER-001",
+        "to": "REQ-CORE-001"
+      }
+    ],
+    "traceability": [
+      {
+        "code_paths": [
+          "src/transfer.py"
+        ],
+        "requirement_id": "REQ-AUDIT-001",
+        "spec_path": "specs/product.md",
+        "status": "active",
+        "test_paths": [],
+        "verified": false
+      },
+      {
+        "code_paths": [
+          "src/authorization.py"
+        ],
+        "requirement_id": "REQ-CORE-001",
+        "spec_path": "specs/product.md",
+        "status": "active",
+        "test_paths": [
+          "tests/test_transfer.py"
+        ],
+        "verified": true
+      },
+      {
+        "code_paths": [
+          "src/transfer.py"
+        ],
+        "requirement_id": "REQ-TRANSFER-001",
+        "spec_path": "specs/product.md",
+        "status": "active",
+        "test_paths": [
+          "tests/test_transfer.py"
+        ],
+        "verified": true
+      }
+    ]
+  },
+  "limits": [
+    "Only structured REQ headings, fields, and explicit @spec annotations are interpreted.",
+    "Trace links prove declared association, not behavioral correctness or test quality.",
+    "Impact analysis consumes a supplied file list and never invokes version-control commands.",
+    "Contradiction checks compare normalized explicit Must and Must-Not clauses only.",
+    "Fenced Markdown code blocks are ignored while parsing requirements."
+  ],
+  "requirements": [
+    {
+      "acceptance": [
+        "An unauthorized transfer is rejected."
+      ],
+      "depends_on": [],
+      "id": "REQ-CORE-001",
+      "line": 1,
+      "must": [
+        "Reject unauthorized transfers"
+      ],
+      "must_not": [],
+      "path": "specs/product.md",
+      "priority": "should",
+      "status": "active",
+      "title": "Authorize transfers"
+    },
+    {
+      "acceptance": [
+        "A valid transfer updates the balance."
+      ],
+      "depends_on": [
+        "REQ-CORE-001"
+      ],
+      "id": "REQ-TRANSFER-001",
+      "line": 7,
+      "must": [
+        "Move the amount exactly once"
+      ],
+      "must_not": [],
+      "path": "specs/product.md",
+      "priority": "should",
+      "status": "active",
+      "title": "Execute a transfer"
+    },
+    {
+      "acceptance": [],
+      "depends_on": [
+        "REQ-TRANSFER-001"
+      ],
+      "id": "REQ-AUDIT-001",
+      "line": 14,
+      "must": [
+        "Record one outcome event"
+      ],
+      "must_not": [],
+      "path": "specs/product.md",
+      "priority": "should",
+      "status": "active",
+      "title": "Record the outcome"
+    }
+  ],
+  "schema_version": "specspan/v1",
+  "subject": {
+    "name": "specspan-demo",
+    "root": ".",
+    "spec_dir": "specs"
+  },
+  "summary": {
+    "errors": 0,
+    "evidence_links": 5,
+    "findings": 1,
+    "notes": 0,
+    "requirements": 3,
+    "unique_requirements": 3,
+    "verified": 2,
+    "warnings": 1
+  },
+  "tool_version": "0.1.0"
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "specs/product.md"
+                },
+                "region": {
+                  "startLine": 14
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "REQ-AUDIT-001 has no test evidence."
+          },
+          "properties": {
+            "requirement_id": "REQ-AUDIT-001"
+          },
+          "ruleId": "unverified-requirement"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "specspan",
+          "rules": [
+            {
+              "id": "unverified-requirement",
+              "shortDescription": {
+                "text": "Unverified Requirement"
+              }
+            }
+          ],
+          "version": "0.1.0"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}
